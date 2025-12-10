@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Stock Chart with Z-Score</title>
+  <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+
+  <style>
+    * { box-sizing: border-box; }
+    body { 
+      margin: 0; 
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; 
+      background: #0d1117; 
+      color: #c9d1d9; 
+      padding: 20px; 
+    }
+    
+    .container { max-width: 1400px; margin: 0 auto; }
+    
+    h1 { 
+      margin: 0 0 20px 0; 
+      font-size: 28px; 
+      font-weight: 600; 
+      color: #58a6ff; 
+    }
+    
+    .controls { 
+      display: flex; 
+      gap: 10px; 
+      margin-bottom: 20px; 
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    
+    .control-group {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    
+    .control-label {
+      font-size: 14px;
+      color: #8b949e;
+    }
+    
+    input, button { 
+      padding: 10px 16px; 
+      font-size: 14px; 
+      border-radius: 6px;
+      border: 1px solid #30363d;
+      background: #161b22;
+      color: #c9d1d9;
+    }
+    
+    input[type="number"] {
+      width: 80px;
+    }
+    
+    input:focus { outline: none; border-color: #58a6ff; }
+    
+    button { 
+      background: #238636; 
+      color: white; 
+      border: none; 
+      cursor: pointer; 
+      font-weight: 500;
+      transition: background 0.2s;
+    }
+    
+    button:hover { background: #2ea043; }
+    button:disabled { 
+      background: #21262d; 
+      color: #484f58; 
+      cursor: not-allowed; 
+    }
+    
+    /* Charts container with resizable divider */
+    .charts-container {
+      position: relative;
+      width: 100%;
+      height: 800px;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .chart-wrapper {
+      position: relative;
+      width: 100%;
+      background: #0d1117;
+      overflow: hidden;
+    }
+    
+    #price-chart-wrapper {
+      flex: 0 0 70%;
+      border-bottom: 1px solid #30363d;
+    }
+    
+    #zscore-chart-wrapper {
+      flex: 0 0 30%;
+    }
+    
+    /* Resizable divider */
+    .divider {
+      height: 4px;
+      background: #30363d;
+      cursor: ns-resize;
+      position: relative;
+      z-index: 10;
+      transition: background 0.2s;
+    }
+    
+    .divider:hover {
+      background: #58a6ff;
+    }
+    
+    .chart-label {
+      position: absolute;
+      top: 15px;
+      left: 15px;
+      font-size: 20px;
+      z-index: 100;
+      pointer-events: none;
+      user-select: none;
+      background: rgba(13, 17, 23, 0.85);
+      padding: 10px 16px;
+      border-radius: 6px;
+      backdrop-filter: blur(8px);
+      border: 1px solid #30363d;
+    }
+    
+    .chart-label strong {
+      font-size: 24px;
+      margin-right: 8px;
+    }
+    
+    .price-change {
+      font-weight: 600;
+      margin-left: 8px;
+    }
+    
+    .zscore-label {
+      position: absolute;
+      bottom: 15px;
+      left: 15px;
+      font-size: 14px;
+      z-index: 100;
+      pointer-events: none;
+      user-select: none;
+      background: rgba(13, 17, 23, 0.85);
+      padding: 8px 12px;
+      border-radius: 6px;
+      backdrop-filter: blur(8px);
+      border: 1px solid #30363d;
+      color: #a371f7;
+      font-weight: 600;
+    }
+    
+    /* Modal styles */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.8);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+    
+    .modal-content {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 24px;
+      max-width: 500px;
+      width: 90%;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+    
+    .modal-header {
+      margin: 0 0 16px 0;
+      font-size: 20px;
+      font-weight: 600;
+      color: #c9d1d9;
+    }
+    
+    .symbol-item {
+      padding: 12px;
+      margin: 8px 0;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .symbol-item:hover {
+      background: #1c2128;
+      border-color: #58a6ff;
+    }
+    
+    .symbol-item-symbol {
+      font-weight: 600;
+      color: #58a6ff;
+      font-size: 16px;
+    }
+    
+    .symbol-item-name {
+      color: #8b949e;
+      font-size: 14px;
+      margin-top: 4px;
+    }
+    
+    .modal-close {
+      margin-top: 16px;
+      width: 100%;
+      background: #21262d;
+      color: #c9d1d9;
+    }
+    
+    #status {
+      margin-bottom: 10px;
+      padding: 10px;
+      border-radius: 6px;
+      display: none;
+    }
+    
+    #status.info { background: #1f6feb; color: white; }
+    #status.error { background: #da3633; color: white; }
+    #status.success { background: #238636; color: white; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>📈 Stock Chart with Mean Reversion Z-Score</h1>
+    
+    <div id="status"></div>
+    
+    <div class="controls">
+      <div class="control-group">
+        <input 
+          id="symbol" 
+          placeholder="Ticker or company" 
+          value="AAPL"
+          style="width: 200px;"
+        />
+        <button id="loadBtn">Load Chart</button>
+      </div>
+      
+      <div class="control-group">
+        <span class="control-label">Z-Score Lookback:</span>
+        <input 
+          id="lookback" 
+          type="number" 
+          min="5" 
+          max="200" 
+          value="20"
+        />
+        <button id="updateZScore">Update</button>
+      </div>
+    </div>
+
+    <div class="charts-container">
+      <div id="price-chart-wrapper" class="chart-wrapper">
+        <div id="price-chart"></div>
+      </div>
+      
+      <div class="divider" id="divider"></div>
+      
+      <div id="zscore-chart-wrapper" class="chart-wrapper">
+        <div id="zscore-chart"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ============================================
+    // STATE MANAGEMENT
+    // ============================================
+    const state = {
+      priceChart: null,
+      zscoreChart: null,
+      priceSeries: null,
+      zscoreSeries: null,
+      currentSymbol: null,
+      currentData: null,
+      lookbackPeriod: 20,
+      isResizing: false
+    };
+
+    const els = {
+      symbol: document.getElementById('symbol'),
+      loadBtn: document.getElementById('loadBtn'),
+      lookback: document.getElementById('lookback'),
+      updateZScore: document.getElementById('updateZScore'),
+      status: document.getElementById('status'),
+      priceWrapper: document.getElementById('price-chart-wrapper'),
+      zscoreWrapper: document.getElementById('zscore-chart-wrapper'),
+      divider: document.getElementById('divider')
+    };
+
+    // ============================================
+    // CHART INITIALIZATION
+    // ============================================
+    function initCharts() {
+      const priceElement = document.getElementById('price-chart');
+      const zscoreElement = document.getElementById('zscore-chart');
+
+      // Price chart (top)
+      state.priceChart = LightweightCharts.createChart(priceElement, {
+        width: priceElement.clientWidth,
+        height: els.priceWrapper.clientHeight,
+        layout: { background: { color: '#0d1117' }, textColor: '#c9d1d9' },
+        grid: { vertLines: { color: '#161b22' }, horzLines: { color: '#161b22' } },
+        crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+        timeScale: { borderColor: '#30363d', visible: false },
+        rightPriceScale: { borderColor: '#30363d' }
+      });
+
+      state.priceSeries = state.priceChart.addLineSeries({
+        color: '#58a6ff',
+        lineWidth: 2,
+        priceFormat: { type: 'price', precision: 2, minMove: 0.01 }
+      });
+
+      // Z-Score chart (bottom)
+      state.zscoreChart = LightweightCharts.createChart(zscoreElement, {
+        width: zscoreElement.clientWidth,
+        height: els.zscoreWrapper.clientHeight,
+        layout: { background: { color: '#0d1117' }, textColor: '#c9d1d9' },
+        grid: { vertLines: { color: '#161b22' }, horzLines: { color: '#161b22' } },
+        crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+        timeScale: { borderColor: '#30363d' },
+        rightPriceScale: { borderColor: '#30363d' }
+      });
+
+      state.zscoreSeries = state.zscoreChart.addLineSeries({
+        color: '#a371f7',
+        lineWidth: 2,
+        priceFormat: { type: 'price', precision: 2, minMove: 0.01 }
+      });
+
+      // Add reference lines at ±0.5, ±1.5, ±2.0, ±2.5 standard deviations
+      const refLevels = [2.5, 2.0, 1.5, 0.5, -0.5, -1.5, -2.0, -2.5];
+      refLevels.forEach(level => {
+        state.zscoreChart.addLineSeries({
+          color: 'rgba(88, 166, 255, 0.35)',
+          lineWidth: 1,
+          priceLineVisible: false,
+          lastValueVisible: false
+        }).setData([
+          { time: '2020-01-01', value: level },
+          { time: '2030-12-31', value: level }
+        ]);
+      });
+
+      // Sync time scales between charts
+      state.priceChart.timeScale().subscribeVisibleTimeRangeChange(() => {
+        const range = state.priceChart.timeScale().getVisibleRange();
+        if (range) {
+          state.zscoreChart.timeScale().setVisibleRange(range);
+        }
+      });
+
+      state.zscoreChart.timeScale().subscribeVisibleTimeRangeChange(() => {
+        const range = state.zscoreChart.timeScale().getVisibleRange();
+        if (range) {
+          state.priceChart.timeScale().setVisibleRange(range);
+        }
+      });
+
+      // Handle window resize
+      window.addEventListener('resize', resizeCharts);
+    }
+
+    // ============================================
+    // RESIZABLE DIVIDER
+    // ============================================
+    els.divider.addEventListener('mousedown', (e) => {
+      state.isResizing = true;
+      document.body.style.cursor = 'ns-resize';
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!state.isResizing) return;
+
+      const container = document.querySelector('.charts-container');
+      const containerRect = container.getBoundingClientRect();
+      const newTopHeight = e.clientY - containerRect.top;
+      const totalHeight = containerRect.height;
+      const newTopPercent = (newTopHeight / totalHeight) * 100;
+
+      // Limit between 30% and 80%
+      if (newTopPercent >= 30 && newTopPercent <= 80) {
+        els.priceWrapper.style.flex = `0 0 ${newTopPercent}%`;
+        els.zscoreWrapper.style.flex = `0 0 ${100 - newTopPercent}%`;
+        resizeCharts();
+      }
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (state.isResizing) {
+        state.isResizing = false;
+        document.body.style.cursor = 'default';
+      }
+    });
+
+    function resizeCharts() {
+      if (state.priceChart) {
+        state.priceChart.applyOptions({
+          width: els.priceWrapper.clientWidth,
+          height: els.priceWrapper.clientHeight
+        });
+      }
+      if (state.zscoreChart) {
+        state.zscoreChart.applyOptions({
+          width: els.zscoreWrapper.clientWidth,
+          height: els.zscoreWrapper.clientHeight
+        });
+      }
+    }
+
+    // ============================================
+    // Z-SCORE CALCULATION
+    // ============================================
+    /**
+     * Calculate rolling z-scores for price data
+     * 
+     * @param {Array} priceData - Array of {time, value} objects
+     * @param {number} lookback - Number of periods for rolling window
+     * @returns {Array} - Array of {time, value} where value is the z-score
+     */
+    function calculateZScores(priceData, lookback) {
+      const zscores = [];
+      
+      // We need at least 'lookback' periods to start calculating
+      for (let i = lookback - 1; i < priceData.length; i++) {
+        // Get the lookback window (previous N prices including current)
+        const window = priceData.slice(i - lookback + 1, i + 1);
+        const prices = window.map(d => d.value);
+        
+        // Calculate mean
+        const mean = prices.reduce((sum, p) => sum + p, 0) / prices.length;
+        
+        // Calculate standard deviation
+        const squaredDiffs = prices.map(p => Math.pow(p - mean, 2));
+        const variance = squaredDiffs.reduce((sum, d) => sum + d, 0) / prices.length;
+        const stdDev = Math.sqrt(variance);
+        
+        // Calculate z-score for current price
+        const currentPrice = priceData[i].value;
+        const zscore = stdDev === 0 ? 0 : (currentPrice - mean) / stdDev;
+        
+        zscores.push({
+          time: priceData[i].time,
+          value: zscore
+        });
+      }
+      
+      return zscores;
+    }
+
+    // ============================================
+    // UI HELPER FUNCTIONS
+    // ============================================
+    function showStatus(message, type = 'info') {
+      els.status.textContent = message;
+      els.status.className = type;
+      els.status.style.display = 'block';
+      
+      setTimeout(() => {
+        els.status.style.display = 'none';
+      }, 5000);
+    }
+
+    function updatePriceLabel(symbol, data) {
+      const oldLabel = document.getElementById('price-label');
+      if (oldLabel) oldLabel.remove();
+
+      if (!data || data.length === 0) return;
+
+      const lastBar = data[data.length - 1];
+      const firstBar = data[0];
+      const lastPrice = lastBar.value.toFixed(2);
+      const change = ((lastBar.value - firstBar.value) / firstBar.value * 100).toFixed(2);
+      const isPositive = change >= 0;
+      const changeText = `${isPositive ? '+' : ''}${change}%`;
+
+      const label = document.createElement('div');
+      label.id = 'price-label';
+      label.className = 'chart-label';
+      label.innerHTML = `
+        <strong>${symbol}</strong>
+        <span style="color: #8b949e;">$${lastPrice}</span>
+        <span class="price-change" style="color: ${isPositive ? '#3fb950' : '#f85149'};">
+          ${changeText}
+        </span>
+      `;
+
+      els.priceWrapper.appendChild(label);
+    }
+
+    function updateZScoreLabel(lookback) {
+      const oldLabel = document.getElementById('zscore-label');
+      if (oldLabel) oldLabel.remove();
+
+      const label = document.createElement('div');
+      label.id = 'zscore-label';
+      label.className = 'zscore-label';
+      label.textContent = `MR, ${lookback}`;
+
+      els.zscoreWrapper.appendChild(label);
+    }
+
+    // ============================================
+    // SYMBOL SEARCH (from previous implementation)
+    // ============================================
+    function showSymbolPicker(results) {
+      return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+        
+        const modal = document.createElement('div');
+        modal.className = 'modal-content';
+        
+        const header = document.createElement('h2');
+        header.className = 'modal-header';
+        header.textContent = `Found ${results.length} matching symbols`;
+        modal.appendChild(header);
+        
+        results.forEach(item => {
+          const div = document.createElement('div');
+          div.className = 'symbol-item';
+          div.innerHTML = `
+            <div class="symbol-item-symbol">${item.symbol}</div>
+            <div class="symbol-item-name">${item.instrument_name}</div>
+          `;
+          div.addEventListener('click', () => {
+            document.body.removeChild(overlay);
+            resolve(item.symbol);
+          });
+          modal.appendChild(div);
+        });
+        
+        const cancelBtn = document.createElement('button');
+        cancelBtn.className = 'modal-close';
+        cancelBtn.textContent = 'Cancel';
+        cancelBtn.addEventListener('click', () => {
+          document.body.removeChild(overlay);
+          resolve(null);
+        });
+        modal.appendChild(cancelBtn);
+        
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+        
+        overlay.addEventListener('click', (e) => {
+          if (e.target === overlay) {
+            document.body.removeChild(overlay);
+            resolve(null);
+          }
+        });
+      });
+    }
+
+    async function searchSymbol(query) {
+      const response = await fetch(`/api/symbol-search?query=${encodeURIComponent(query)}`);
+      const data = await response.json();
+      
+      if (data.status === 'error' || !data.data) {
+        throw new Error(data.message || 'Search failed');
+      }
+      
+      return data.data;
+    }
+
+    async function fetchStockData(symbol, outputsize = 500) {
+      const response = await fetch(`/api/stock/${symbol}?outputsize=${outputsize}&interval=1day`);
+      const data = await response.json();
+      
+      if (data.status === 'error' || !data.values) {
+        throw new Error(data.message || 'Failed to fetch stock data');
+      }
+      
+      return data;
+    }
+
+    // ============================================
+    // MAIN CHART RENDERING
+    // ============================================
+    function renderCharts(symbol, data, lookback) {
+      // Transform price data
+      const priceData = data.values
+        .map(bar => ({
+          time: bar.datetime.split(' ')[0],
+          value: parseFloat(bar.close)
+        }))
+        .filter(bar => !isNaN(bar.value))
+        .reverse();
+
+      // Update price chart
+      state.priceSeries.setData(priceData);
+      state.priceChart.timeScale().fitContent();
+      
+      // Calculate and update z-scores
+      const zscoreData = calculateZScores(priceData, lookback);
+      state.zscoreSeries.setData(zscoreData);
+      state.zscoreChart.timeScale().fitContent();
+      
+      // Update labels
+      updatePriceLabel(symbol, priceData);
+      updateZScoreLabel(lookback);
+      
+      // Store current data for recalculation
+      state.currentData = data;
+      state.currentSymbol = symbol;
+      
+      showStatus(`Successfully loaded ${symbol} with ${lookback}-day z-score`, 'success');
+    }
+
+    // ============================================
+    // LOAD CHART (with symbol search)
+    // ============================================
+    async function loadChart() {
+      const input = els.symbol.value.trim();
+      
+      if (!input) {
+        showStatus('Please enter a symbol or company name', 'error');
+        return;
+      }
+      
+      els.loadBtn.disabled = true;
+      els.loadBtn.textContent = 'Loading...';
+      
+      try {
+        const lookback = parseInt(els.lookback.value) || 20;
+        
+        // FIXED: Always fetch full year of data (500 days)
+        // The lookback only affects z-score calculation, NOT data fetching
+        const DEFAULT_DATA_SIZE = 500;
+        
+        showStatus(`Loading ${input}...`, 'info');
+        
+        try {
+          const data = await fetchStockData(input.toUpperCase(), DEFAULT_DATA_SIZE);
+          renderCharts(input.toUpperCase(), data, lookback);
+          return;
+        } catch (directError) {
+          console.log('Direct load failed, trying search');
+        }
+        
+        showStatus(`Searching for "${input}"...`, 'info');
+        const searchResults = await searchSymbol(input);
+        
+        if (!searchResults || searchResults.length === 0) {
+          throw new Error(`No symbols found matching "${input}"`);
+        }
+        
+        if (searchResults.length === 1) {
+          const symbol = searchResults[0].symbol;
+          showStatus(`Found ${symbol}, loading...`, 'info');
+          const data = await fetchStockData(symbol, DEFAULT_DATA_SIZE);
+          renderCharts(symbol, data, lookback);
+          return;
+        }
+        
+        showStatus('Multiple symbols found', 'info');
+        const selectedSymbol = await showSymbolPicker(searchResults);
+        
+        if (!selectedSymbol) {
+          showStatus('Search cancelled', 'info');
+          return;
+        }
+        
+        showStatus(`Loading ${selectedSymbol}...`, 'info');
+        const data = await fetchStockData(selectedSymbol, DEFAULT_DATA_SIZE);
+        renderCharts(selectedSymbol, data, lookback);
+        
+      } catch (error) {
+        console.error('Load error:', error);
+        showStatus(error.message, 'error');
+      } finally {
+        els.loadBtn.disabled = false;
+        els.loadBtn.textContent = 'Load Chart';
+      }
+    }
+
+    // ============================================
+    // UPDATE Z-SCORE LOOKBACK
+    // ============================================
+    async function updateZScore() {
+      if (!state.currentData || !state.currentSymbol) {
+        showStatus('Please load a chart first', 'error');
+        return;
+      }
+      
+      const newLookback = parseInt(els.lookback.value);
+      
+      if (isNaN(newLookback) || newLookback < 5 || newLookback > 200) {
+        showStatus('Lookback must be between 5 and 200', 'error');
+        return;
+      }
+      
+      els.updateZScore.disabled = true;
+      els.updateZScore.textContent = 'Updating...';
+      
+      try {
+        // Check if we have enough data for this lookback period
+        const availableData = state.currentData.values.length;
+        
+        // We need at least newLookback points to calculate z-scores
+        if (availableData < newLookback) {
+          // Need more data - fetch from API
+          showStatus(`Fetching more data for ${newLookback}-day lookback...`, 'info');
+          
+          // Calculate required data: max of (current data size, lookback + buffer)
+          const requiredData = Math.max(500, newLookback + 100);
+          const data = await fetchStockData(state.currentSymbol, requiredData);
+          renderCharts(state.currentSymbol, data, newLookback);
+        } else {
+          // We have enough data - just recalculate z-scores
+          // This doesn't require an API call!
+          renderCharts(state.currentSymbol, state.currentData, newLookback);
+        }
+        
+        state.lookbackPeriod = newLookback;
+        
+      } catch (error) {
+        console.error('Update error:', error);
+        showStatus(error.message, 'error');
+      } finally {
+        els.updateZScore.disabled = false;
+        els.updateZScore.textContent = 'Update';
+      }
+    }
+
+    // ============================================
+    // EVENT LISTENERS
+    // ============================================
+    els.loadBtn.addEventListener('click', loadChart);
+    els.updateZScore.addEventListener('click', updateZScore);
+    
+    els.symbol.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') loadChart();
+    });
+    
+    els.lookback.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') updateZScore();
+    });
+
+    // Initialize on page load
+    window.addEventListener('load', () => {
+      initCharts();
+      loadChart();
+    });
+  </script>
+</body>
+</html>
