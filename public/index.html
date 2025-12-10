@@ -325,7 +325,7 @@
         rsi: null
       },
       currentSymbol: null,
-      currentName: null,  // NEW: Store company name
+      currentName: null,
       currentData: null,
       currentInterval: '1day',
       lookbackPeriod: 20,
@@ -475,12 +475,15 @@
       });
 
       // Sync crosshair movement
+      // Map chart indices to their primary series
+      const seriesMap = [state.series.price, state.series.zscore, state.series.rsi];
+      
       charts.forEach((chart, index) => {
         chart.subscribeCrosshairMove((param) => {
           if (param.time) {
             charts.forEach((otherChart, otherIndex) => {
-              if (index !== otherIndex) {
-                otherChart.setCrosshairPosition(param.logical, param.time, otherChart.series()[0]);
+              if (index !== otherIndex && seriesMap[otherIndex]) {
+                otherChart.setCrosshairPosition(param.logical, param.time, seriesMap[otherIndex]);
               }
             });
           }
@@ -526,7 +529,7 @@
     }
 
     /**
-     * Calculate Z-Scores (from previous implementation)
+     * Calculate Z-Scores (rolling z-score calculation)
      */
     function calculateZScores(priceData, lookback) {
       const zscores = [];
@@ -715,8 +718,33 @@
       return data.data;
     }
 
-    async function fetchStockData(symbol, interval, outputsize = 500) {
-      const response = await fetch(`/api/stock/${symbol}?outputsize=${outputsize}&interval=${interval}`);
+    /**
+     * Calculate appropriate data size based on interval
+     * Goal: Always show enough data for meaningful analysis
+     */
+    function getOutputSize(interval) {
+      const sizeMap = {
+        '1min': 5000,    // ~3.5 days of trading (assuming 6.5 hour market day)
+        '5min': 5000,    // ~17 days
+        '15min': 5000,   // ~52 days
+        '30min': 3000,   // ~78 days
+        '45min': 2000,   // ~78 days
+        '1h': 2000,      // ~104 days
+        '2h': 1500,      // ~156 days
+        '4h': 1000,      // ~166 days
+        '1day': 500,     // ~2 years
+        '1week': 500,    // ~10 years
+        '1month': 500    // ~40 years
+      };
+      
+      return sizeMap[interval] || 500;
+    }
+
+    async function fetchStockData(symbol, interval, outputsize = null) {
+      // If outputsize not specified, calculate based on interval
+      const size = outputsize || getOutputSize(interval);
+      
+      const response = await fetch(`/api/stock/${symbol}?outputsize=${size}&interval=${interval}`);
       const data = await response.json();
       
       if (data.status === 'error' || !data.values) {
@@ -842,46 +870,46 @@
       }
     }
 
-  // ============================================
-  // UPDATE INDICATORS
-  //
-  async function updateIndicators() {
-    if (!state.currentData || !state.currentSymbol) {
-      showStatus('Please load a chart first', 'error');
-      return;
-    }
-
+    // ============================================
+    // UPDATE INDICATORS
+    // ============================================
+    async function updateIndicators() {
+      if (!state.currentData || !state.currentSymbol) {
+        showStatus('Please load a chart first', 'error');
+        return;
+      }
+      
       const newLookback = parseInt(els.lookback.value);
+      
+      if (isNaN(newLookback) || newLookback < 5 || newLookback > 200) {
+        showStatus('Lookback must be between 5 and 200', 'error');
+        return;
+      }
   
-  if (isNaN(newLookback) || newLookback < 5 || newLookback > 200) {
-    showStatus('Lookback must be between 5 and 200', 'error');
-    return;
-  }
-  
-  els.updateIndicators.disabled = true;
-  els.updateIndicators.textContent = 'Updating...';
-  
-  try {
-    const availableData = state.currentData.values.length;
-    
-    if (availableData < newLookback) {
-      showStatus(`Fetching more data for ${newLookback}-day lookback...`, 'info');
-      const requiredData = Math.max(500, newLookback + 100);
-      const data = await fetchStockData(state.currentSymbol, state.currentInterval, requiredData);
-      state.lookbackPeriod = newLookback;
-      renderCharts(state.currentSymbol, state.currentName, data);
-    } else {
-      state.lookbackPeriod = newLookback;
-      renderCharts(state.currentSymbol, state.currentName, state.currentData);
-    }
-    
-  } catch (error) {
-    console.error('Update error:', error);
-    showStatus(error.message, 'error');
-  } finally {
-    els.updateIndicators.disabled = false;
-    els.updateIndicators.textContent = 'Update';
-  }
+      els.updateIndicators.disabled = true;
+      els.updateIndicators.textContent = 'Updating...';
+      
+      try {
+        const availableData = state.currentData.values.length;
+        
+        if (availableData < newLookback) {
+          showStatus(`Fetching more data for ${newLookback}-day lookback...`, 'info');
+          const requiredData = Math.max(getOutputSize(state.currentInterval), newLookback + 100);
+          const data = await fetchStockData(state.currentSymbol, state.currentInterval, requiredData);
+          state.lookbackPeriod = newLookback;
+          renderCharts(state.currentSymbol, state.currentName, data);
+        } else {
+          state.lookbackPeriod = newLookback;
+          renderCharts(state.currentSymbol, state.currentName, state.currentData);
+        }
+        
+      } catch (error) {
+        console.error('Update error:', error);
+        showStatus(error.message, 'error');
+      } finally {
+        els.updateIndicators.disabled = false;
+        els.updateIndicators.textContent = 'Update';
+      }
 }
 
 // ============================================
@@ -928,6 +956,7 @@ window.addEventListener('load', () => {
   initCharts();
   loadChart();
 });
+
 
 </script>
 </body>
